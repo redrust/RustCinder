@@ -1,1 +1,46 @@
-# RustCinder
+# RustCinder：自建学习库
+## 编译流程
+1. 安装xmake
+```
+curl -fsSL https://xmake.io/shget.text | bash
+```
+## 安装本地库，可以不安装，xmake已经处理好包管理
+1. 安装protobuf
+```
+sudo apt-get install protobuf-compiler libprotobuf-dev
+```
+2. 安装muduo
+```
+1. 安装cmake
+sudo apt-get install cmake
+2. 安装boost库
+sudo apt-get install libboost-dev libboost-test-dev
+3. 下载muduo库
+git clone https://github.com/chenshuo/muduo.git
+4. 注释muduo的unit_test
+cmakelists里的这一行 option(MUDUO_BUILD_EXAMPLES "Build Muduo examples" ON) 注释掉
+5. 编译
+./build.sh
+6. 安装
+./build.sh install
+7. 拷贝库文件
+cd ~/build/release-install-cpp11
+mv include/muduo/ /usr/include
+mv lib/* /usr/local/lib
+```
+3. 安装gtest
+```
+git clone https://github.com/google/googletest.git
+cd googletest
+mkdir build
+cd build
+cmake ..
+make && make install
+```
+4. 安装yaml
+```
+git clone https://github.com/jbeder/yaml-cpp.git
+cd yaml-cpp
+mkdir build && cd build
+cmake .. && make
+```
