@@ -18,11 +18,11 @@ namespace RustCinder
         virtual ~GatewayService() = default;
         
         /* rpc接口 */
-        virtual void Login(google::protobuf::RpcController* controller,
+        virtual void login(google::protobuf::RpcController* controller,
                            const gateway_service::LoginRequest* request,
                            gateway_service::LoginResponse* response,
                            google::protobuf::Closure* done) override;
-        virtual void Logout(google::protobuf::RpcController* controller,
+        virtual void logout(google::protobuf::RpcController* controller,
                             const gateway_service::LogoutRequest* request,
                             gateway_service::LogoutResponse* response,
                             google::protobuf::Closure* done) override;

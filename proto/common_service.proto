@@ -1,0 +1,40 @@
+syntax = "proto3";
+package common_service;
+option cc_generic_services = true;
+
+
+message PingRequest {
+    uint64 timestamp = 1;
+}
+
+message PongResponse {
+    uint64 timestamp = 1;
+}
+
+service HeartbeatService {
+    rpc ping(PingRequest) returns (PongResponse);
+}
+
+
+
+/* 
+offset = ((t2 - t1) - (t3 - t4)) / 2
+roundTripTime = (t2 - t1) + (t3 - t4)
+*/
+message SyncTimeRequest 
+{
+    uint64 client_send_ts = 1; // t1
+}
+
+message SyncTimeResponse 
+{
+    // uint64 client_send_ts = 1; // t1
+    uint64 server_recv_ts = 1; // t2
+    uint64 server_send_ts = 2; // t3
+    // uint64 client_recv_ts = 4; // t4
+}
+
+service CommonService 
+{
+    rpc syncServerTime(SyncTimeRequest) returns (SyncTimeResponse);
+}

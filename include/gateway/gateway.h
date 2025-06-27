@@ -3,6 +3,8 @@
 
 #include <memory>
 
+#include <google/protobuf/descriptor.h>
+#include <google/protobuf/service.h>
 #include <muduo/net/EventLoop.h>
 #include <muduo/net/protorpc/RpcServer.h>
 
@@ -11,7 +13,6 @@
 
 namespace RustCinder 
 {
-    class GatewayService;
     class Gateway : public NonCopyable, public NonMoveable
     {
     public:
@@ -21,11 +22,12 @@ namespace RustCinder
         void init();
         void start();
         void stop();
+        void registerService(std::string serviceName, google::protobuf::Service* service);
     private:
-        std::shared_ptr<muduo::net::EventLoop> m_eventLoop;
-        std::shared_ptr<muduo::net::InetAddress> m_listenAddr;
-        std::shared_ptr<muduo::net::RpcServer> m_rpcServer;
-        std::shared_ptr<GatewayService> m_service;
+        muduo::net::EventLoop* m_eventLoop;
+        muduo::net::InetAddress m_listenAddr;
+        muduo::net::RpcServer* m_rpcServer;
+        std::unordered_map<std::string, google::protobuf::Service*> m_services;
         bool m_isRunning = false;
         bool m_isInitialized = false;
     };

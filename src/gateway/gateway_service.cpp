@@ -4,7 +4,7 @@
 
 namespace RustCinder
 {
-    void GatewayService::Login(google::protobuf::RpcController* controller,
+    void GatewayService::login(google::protobuf::RpcController* controller,
                                    const gateway_service::LoginRequest* request,
                                    gateway_service::LoginResponse* response,
                                    google::protobuf::Closure* done)
@@ -15,12 +15,12 @@ namespace RustCinder
         done->Run();
     }
 
-    void GatewayService::Logout(google::protobuf::RpcController* controller,
+    void GatewayService::logout(google::protobuf::RpcController* controller,
                                     const gateway_service::LogoutRequest* request,
                                     gateway_service::LogoutResponse* response,
                                     google::protobuf::Closure* done)
     {
-        LOG_INFO << "Logout request received: "
+        LOG_INFO << "logout request received: "
                   << "Account: " << request->account();
         done->Run();
     }

@@ -48,7 +48,7 @@ includes('tests')
 
 target('gateway')
     set_kind('binary')
-    add_files('programs/gateway_server.cpp')
+    add_files('programs/gateway.cpp')
     GLOBAL_CONFIG_FUNC['PROGRAMS']()
 
 target('rpc_client')
