@@ -7,8 +7,8 @@
 
 #include "common/noncopyable.h"
 #include "client/tcp_service.h"
-#include "client/login_service_stub.h"
-#include "client/common_service_stub.h"
+#include "stub/login_service_stub.h"
+#include "stub/common_service_stub.h"
 
 namespace RustCinder 
 {

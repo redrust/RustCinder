@@ -1,6 +1,6 @@
 #include <muduo/base/Logging.h>
 
-#include "client/login_service_stub.h"
+#include "stub/login_service_stub.h"
 
 namespace RustCinder
 {

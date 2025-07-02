@@ -15,4 +15,17 @@ namespace RustCinder
         response->set_server_send_ts(TimeUtil::getNowMs());
         done->Run();
     }
+
+    void CommonService::ping(google::protobuf::RpcController* controller,
+                             const common_service::PingRequest* request,
+                             common_service::PongResponse* response,
+                             google::protobuf::Closure* done)
+    {
+        auto currentTime = TimeUtil::getNowMs();
+        LOG_INFO << "ping request received: " << request->timestamp()
+                 << ", current time: " << currentTime 
+                 << ", round trip time: " << (currentTime - request->timestamp());
+        response->set_timestamp(currentTime);
+        done->Run();
+    }
 }

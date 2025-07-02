@@ -11,20 +11,21 @@ namespace RustCinder
     class CommonServiceStub
     {
     public:
-        CommonServiceStub(muduo::net::RpcChannelPtr channel, muduo::net::EventLoop* eventLoop)
-            : m_stub(new common_service::CommonService::Stub(channel.get())), m_eventLoop(eventLoop) 
-            {
-                m_eventLoop->runEvery(5, std::bind(&CommonServiceStub::syncServerTime, this));
-            }
-        ~CommonServiceStub() { delete m_stub; }
+        CommonServiceStub(muduo::net::RpcChannelPtr channel, muduo::net::EventLoop* eventLoop);
+        ~CommonServiceStub();
+
+        void init();
 
         void syncServerTime();
-
         void syncServerTimeCallback(uint64_t clientSendTs, common_service::SyncTimeResponse* response);
+
+        void ping();
+        void pingCallback(common_service::PongResponse* response);
     private:
         common_service::CommonService::Stub* m_stub = nullptr;
         muduo::net::EventLoop* m_eventLoop = nullptr;
-
+        muduo::net::TimerId m_syncServerTimeTimerId;
+        muduo::net::TimerId m_pingTimerId;
     };
 }
 

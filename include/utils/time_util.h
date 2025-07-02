@@ -33,6 +33,7 @@ namespace RustCinder
         }
         static std::atomic<uint64_t> lastSyncTs;
         static std::atomic<uint64_t> lastRecvTs;
+        static std::atomic<uint64_t> lastPingTs;
     };
 }
 

@@ -21,6 +21,11 @@ namespace RustCinder
                                     const common_service::SyncTimeRequest* request,
                                     common_service::SyncTimeResponse* response,
                                     google::protobuf::Closure* done) override;
+
+        virtual void ping(google::protobuf::RpcController* controller,
+                          const common_service::PingRequest* request,
+                          common_service::PongResponse* response,
+                          google::protobuf::Closure* done) override;
     };
 }
 #endif // _COMMON_SERVICE_H_

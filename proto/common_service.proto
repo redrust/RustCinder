@@ -11,12 +11,6 @@ message PongResponse {
     uint64 timestamp = 1;
 }
 
-service HeartbeatService {
-    rpc ping(PingRequest) returns (PongResponse);
-}
-
-
-
 /* 
 offset = ((t2 - t1) - (t3 - t4)) / 2
 roundTripTime = (t2 - t1) + (t3 - t4)
@@ -37,4 +31,5 @@ message SyncTimeResponse
 service CommonService 
 {
     rpc syncServerTime(SyncTimeRequest) returns (SyncTimeResponse);
+    rpc ping(PingRequest) returns (PongResponse);
 }

@@ -38,7 +38,7 @@ TEST(RpcClientTest, LoginTest)
     t.start();
 
     // Wait for the login response
-    sleep(1);
+    sleep(2);
 
     std::string account = "test_user";
     std::string password = "test_password";
@@ -68,10 +68,31 @@ TEST(RpcClientTest, SyncServerTimeTest)
     t.start();
 
     // Wait for the login response
-    sleep(10);
+    sleep(6);
 
     ASSERT_TRUE(RustCinder::TimeUtil::lastSyncTs != 0) << "Server time should be synced.";
 
+    rpcClient->stop();
+    rpcClient = nullptr;
+    t.join();
+}
+
+TEST(RpcClientTest, PingTest)
+{
+    RustCinder::RpcClient* rpcClient = nullptr;
+    muduo::Thread t([&rpcClient](){
+        rpcClient = new RustCinder::RpcClient();
+        rpcClient->init();
+        ASSERT_TRUE(rpcClient->getEventLoop() != nullptr) << "Event loop should be initialized.";
+
+        rpcClient->start();
+        delete rpcClient;
+    });
+    t.start();
+
+    // Wait for the ping response
+    sleep(1);
+    ASSERT_TRUE(RustCinder::TimeUtil::lastPingTs != 0) << "Ping should be successful.";
     rpcClient->stop();
     rpcClient = nullptr;
     t.join();
