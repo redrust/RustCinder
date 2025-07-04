@@ -7,7 +7,7 @@
 #include "common/noncopyable.h"
 #include "common/nonmoveable.h"
 
-namespace RustCinder
+namespace RustCinder::Service
 {
     class CommonService : public NonCopyable, public NonMoveable, \
                           public common_service::CommonService

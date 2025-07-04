@@ -8,24 +8,51 @@ namespace RustCinder
     CommonServiceStub::CommonServiceStub(muduo::net::RpcChannelPtr channel, muduo::net::EventLoop* eventLoop)
         : m_stub(new common_service::CommonService::Stub(channel.get())), m_eventLoop(eventLoop) 
     {
-        init();
     }
 
     CommonServiceStub::~CommonServiceStub()
     {
+        stopAll();
         if (m_stub)
         {
             delete m_stub; // Clean up the stub
             m_stub = nullptr;
         }
-        m_eventLoop->cancel(m_syncServerTimeTimerId); // Cancel the sync server time timer
-        m_eventLoop->cancel(m_pingTimerId); // Cancel the ping timer
     }
 
-    void CommonServiceStub::init()
+    void CommonServiceStub::startAll()
+    {
+        startSyncServerTime();
+        startPing();
+        LOG_INFO << "CommonServiceStub started.";
+    }
+
+    void CommonServiceStub::stopAll()
+    {
+        LOG_INFO << "Stopping CommonServiceStub...";
+        stopSyncServerTime();
+        stopPing();
+        LOG_INFO << "CommonServiceStub stopped.";
+    }
+
+    void CommonServiceStub::startSyncServerTime()
     {
         m_syncServerTimeTimerId = m_eventLoop->runEvery(5, std::bind(&CommonServiceStub::syncServerTime, this));
+    }
+
+    void CommonServiceStub::stopSyncServerTime()
+    {
+        m_eventLoop->cancel(m_syncServerTimeTimerId);
+    }
+
+    void CommonServiceStub::startPing()
+    {
         m_pingTimerId = m_eventLoop->runEvery(1, std::bind(&CommonServiceStub::ping, this));
+    }
+
+    void CommonServiceStub::stopPing()
+    {
+        m_eventLoop->cancel(m_pingTimerId);
     }
 
     void CommonServiceStub::syncServerTime()

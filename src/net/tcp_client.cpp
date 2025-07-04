@@ -1,24 +1,24 @@
 #include <muduo/base/Logging.h>
 
-#include "client/tcp_service.h"
+#include "net/tcp_client.h"
 
-namespace RustCinder
+namespace RustCinder::net
 {
-    TcpService::~TcpService()
+    TcpClient::~TcpClient()
     {
-        if(m_tcpClient)
-        {
-            m_tcpClient->disconnect(); // Disconnect the TcpClient
-            m_tcpClient->stop(); // Stop the TcpClient
-            delete m_tcpClient; // Clean up TcpClient
-        }
         m_eventLoop = nullptr;
         m_channel.reset();
         m_isConnected = false;
+        if(m_tcpClient)
+        {
+            m_tcpClient->disconnect(); // Disconnect the TcpClient
+            // m_tcpClient->stop(); // Stop the TcpClient
+            delete m_tcpClient; // Clean up TcpClient
+        }
         LOG_INFO << getServiceName() << " destroyed.";
     }
 
-    void TcpService::init(muduo::net::EventLoop* loop, const std::string& serverAddr, uint16_t serverPort, const std::string& serviceName)
+    void TcpClient::init(muduo::net::EventLoop* loop, const std::string& serverAddr, uint16_t serverPort, const std::string& serviceName)
     {
         if (m_eventLoop)
         {
@@ -32,14 +32,26 @@ namespace RustCinder
         m_serviceName = serviceName;
 
         m_tcpClient->setConnectionCallback(
-            std::bind(&TcpService::handleConnection, this, std::placeholders::_1));
+            std::bind(&TcpClient::handleConnection, this, std::placeholders::_1));
         m_tcpClient->setMessageCallback(
             std::bind(&muduo::net::RpcChannel::onMessage, m_channel.get(), std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
-        
-        m_tcpClient->connect();
+    }
+
+    void TcpClient::connect()
+    {
+        if (!m_eventLoop)
+        {
+            LOG_ERROR << getServiceName() << " EventLoop is not initialized.";
+            return; // EventLoop is not initialized
+        }
+        if (m_tcpClient && !m_isConnected)
+        {
+            LOG_INFO << getServiceName() << " connecting to server: " << m_serverAddr.toIpPort();
+            m_tcpClient->connect(); // Connect the TcpClient
+        }
     }
     
-    void TcpService::handleConnection(const muduo::net::TcpConnectionPtr& conn)
+    void TcpClient::handleConnection(const muduo::net::TcpConnectionPtr& conn)
     {
         if (conn->connected())
         {

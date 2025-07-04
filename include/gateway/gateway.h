@@ -6,10 +6,10 @@
 #include <google/protobuf/descriptor.h>
 #include <google/protobuf/service.h>
 #include <muduo/net/EventLoop.h>
-#include <muduo/net/protorpc/RpcServer.h>
 
 #include "common/noncopyable.h"
 #include "common/nonmoveable.h"
+#include "net/rpc_server.h"
 
 namespace RustCinder 
 {
@@ -22,12 +22,10 @@ namespace RustCinder
         void init();
         void start();
         void stop();
-        void registerService(std::string serviceName, google::protobuf::Service* service);
     private:
         muduo::net::EventLoop* m_eventLoop;
         muduo::net::InetAddress m_listenAddr;
-        muduo::net::RpcServer* m_rpcServer;
-        std::unordered_map<std::string, google::protobuf::Service*> m_services;
+        net::RpcServer* m_rpcServer;
         bool m_isRunning = false;
         bool m_isInitialized = false;
     };

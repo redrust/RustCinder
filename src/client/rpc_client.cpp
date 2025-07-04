@@ -2,6 +2,7 @@
 #include <google/protobuf/stubs/callback.h>
 
 #include "client/rpc_client.h"
+#include "service/common_service.h"
 
 namespace RustCinder 
 {
@@ -11,8 +12,24 @@ namespace RustCinder
         {
             stop();
             delete m_eventLoop; // Clean up EventLoop
+            m_eventLoop = nullptr;
         }
-        m_eventLoop = nullptr;
+        if(m_loginServiceStub)
+        {
+            delete m_loginServiceStub; // Clean up LoginServiceStub
+            m_loginServiceStub = nullptr;
+        }
+        if(m_commonServiceStub)
+        {
+            delete m_commonServiceStub; // Clean up CommonServiceStub
+            m_commonServiceStub = nullptr;
+        }
+        if(m_tcpClient)
+        {
+            delete m_tcpClient; // Clean up TcpClient
+            m_tcpClient = nullptr;
+        }
+        LOG_INFO << "RpcClient destroyed.";
     }
 
     void RpcClient::init()
@@ -26,40 +43,34 @@ namespace RustCinder
 
         std::string serverAddr = "127.0.0.1"; // Default server address
         uint16_t serverPort = 9981; // Default port for the RPC server
-        m_tcpService = new TcpService();
-        m_tcpService->init(m_eventLoop, serverAddr, serverPort, "TcpClient");
+        m_tcpClient = new net::TcpClient();
+        m_tcpClient->init(m_eventLoop, serverAddr, serverPort, "TcpClient");
 
-        m_loginServiceStub = new LoginServiceStub(m_tcpService->getChannel());
-        m_commonServiceStub = new CommonServiceStub(m_tcpService->getChannel(), m_eventLoop);
+        auto channel = m_tcpClient->getChannel();
+        m_loginServiceStub = new LoginServiceStub(channel);
+        m_commonServiceStub = new CommonServiceStub(channel, m_eventLoop);
+
+        m_serviceManager = new Service::ServiceManager();
+        m_serviceManager->registerService(new Service::CommonService());
+
+        channel->setServices(&m_serviceManager->getServices());
     }
 
     void RpcClient::start()
     {
         LOG_INFO << "Starting RPC client...";
+        m_tcpClient->connect(); // Connect the TcpClient
+        m_commonServiceStub->startAll(); // Start the CommonServiceStub
         m_eventLoop->loop();
     }
 
     void RpcClient::stop()
     {
         LOG_INFO << "Stopping RPC client...";
+        m_commonServiceStub->stopAll(); // Stop the CommonServiceStub
         if(m_eventLoop)
         {
             m_eventLoop->quit();
-        }
-        if(m_tcpService)
-        {
-            delete m_tcpService; // Clean up TcpService
-            m_tcpService = nullptr;
-        }
-        if(m_loginServiceStub)
-        {
-            delete m_loginServiceStub; // Clean up LoginServiceStub
-            m_loginServiceStub = nullptr;
-        }
-        if(m_commonServiceStub)
-        {
-            delete m_commonServiceStub; // Clean up CommonServiceStub
-            m_commonServiceStub = nullptr;
         }
     }
 }

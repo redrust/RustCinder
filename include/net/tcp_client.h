@@ -9,18 +9,18 @@
 
 #include "common/noncopyable.h"
 
-namespace RustCinder
+namespace RustCinder::net
 {
-    
-    class TcpService : public NonCopyable
+    class TcpClient : public NonCopyable
     {
     public:
-        TcpService() = default;
-        virtual ~TcpService();
+        TcpClient() = default;
+        virtual ~TcpClient();
         void handleConnection(const muduo::net::TcpConnectionPtr& conn);
         bool isConnected() const { return m_isConnected; }
 
         void init(muduo::net::EventLoop* loop, const std::string& serverAddr, uint16_t serverPort, const std::string& serviceName);
+        void connect();
 
         const std::string& getServiceName() const { return m_serviceName; }
         muduo::net::RpcChannelPtr getChannel() const { return m_channel; }
@@ -30,7 +30,7 @@ namespace RustCinder
         muduo::net::RpcChannelPtr m_channel;
         muduo::net::InetAddress m_serverAddr;
         bool m_isConnected = false;
-        std::string m_serviceName = "TcpService";
+        std::string m_serviceName = "TcpClient";
     };
 }
 

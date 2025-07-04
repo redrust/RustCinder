@@ -6,9 +6,10 @@
 #include "common_service.pb.h"
 
 #include "common/noncopyable.h"
-#include "client/tcp_service.h"
+#include "net/tcp_client.h"
 #include "stub/login_service_stub.h"
 #include "stub/common_service_stub.h"
+#include "service/service_manager.h"
 
 namespace RustCinder 
 {
@@ -28,9 +29,10 @@ namespace RustCinder
 
     private:
         muduo::net::EventLoop* m_eventLoop = nullptr;
-        TcpService* m_tcpService = nullptr;
+        net::TcpClient* m_tcpClient = nullptr;
         LoginServiceStub* m_loginServiceStub = nullptr;
         CommonServiceStub* m_commonServiceStub = nullptr;
+        Service::ServiceManager* m_serviceManager = nullptr;
     };
 }
 

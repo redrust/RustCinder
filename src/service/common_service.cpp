@@ -1,9 +1,9 @@
 #include <muduo/base/Logging.h>
 
-#include "common/common_service.h"
+#include "service/common_service.h"
 #include "utils/time_util.h"
 
-namespace RustCinder
+namespace RustCinder::Service
 {
     void CommonService::syncServerTime(google::protobuf::RpcController* controller,
                                     const common_service::SyncTimeRequest* request,

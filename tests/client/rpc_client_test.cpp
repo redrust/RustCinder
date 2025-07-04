@@ -38,7 +38,7 @@ TEST(RpcClientTest, LoginTest)
     t.start();
 
     // Wait for the login response
-    sleep(2);
+    sleep(1);
 
     std::string account = "test_user";
     std::string password = "test_password";
@@ -91,11 +91,11 @@ TEST(RpcClientTest, PingTest)
     t.start();
 
     // Wait for the ping response
-    sleep(1);
+    sleep(2);
     ASSERT_TRUE(RustCinder::TimeUtil::lastPingTs != 0) << "Ping should be successful.";
     rpcClient->stop();
     rpcClient = nullptr;
-    t.join();
+    t.join(); 
 }
 
 int main(int argc, char** argv) {

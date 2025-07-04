@@ -14,7 +14,13 @@ namespace RustCinder
         CommonServiceStub(muduo::net::RpcChannelPtr channel, muduo::net::EventLoop* eventLoop);
         ~CommonServiceStub();
 
-        void init();
+        void startAll();
+        void stopAll();
+
+        void startSyncServerTime();
+        void stopSyncServerTime();
+        void startPing();
+        void stopPing();
 
         void syncServerTime();
         void syncServerTimeCallback(uint64_t clientSendTs, common_service::SyncTimeResponse* response);
