@@ -4,6 +4,24 @@
 ```
 curl -fsSL https://xmake.io/shget.text | bash
 ```
+2. 开启debug模式
+```
+xmake f -m debug
+```
+3. 编译项目
+```
+xmake build
+```
+4. 运行测试 
+
+其中tests文件下全部文件名都是独立可运行的测试模块，下面是使用样例
+```
+xmake run rpc_client_test
+```
+5. 使用gdb调试
+```
+xmake run -d rpc_client_test
+```
 ## 安装本地库，可以不安装，xmake已经处理好包管理
 1. 安装protobuf
 ```
