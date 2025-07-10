@@ -1,5 +1,5 @@
 #include "common/memory_pool.h"
-#include <iostream>
+
 namespace RustCinder
 {
     ThreadCache::ThreadCache()
@@ -15,7 +15,7 @@ namespace RustCinder
             item.usedList = nullptr;
             totalSize += getAlignByIndex(i);
             item.blockSize = totalSize;
-            // fetchFromCentralCache(totalSize);
+            fetchFromCentralCache(totalSize);
         }
     }
     
@@ -94,13 +94,7 @@ namespace RustCinder
             item.freeList = reinterpret_cast<Block*>(ptr);
             item.freeNums += blockNums; // Increase the number of free blocks
 
-            Block* newRaw = (Block*)malloc(BLOCK_SIZE);
-            newRaw->data = ptr;
-            if(item.rawPtr)
-            {
-                newRaw->header.next = item.rawPtr;
-            }
-            item.rawPtr = newRaw;
+            item.rawPtrs.push_back(reinterpret_cast<Block*>(ptr)); // Store the raw pointer for deallocation
             return;
         }
     }
@@ -113,14 +107,9 @@ namespace RustCinder
         }
         else
         {
-            Block* current = item.rawPtr;
-            Block* t = nullptr;
-            while(current)
+            for(Block* block : item.rawPtrs)
             {
-                t = current;
-                current = current->header.next; // Traverse the raw pointers
-                free(t->data); // Free the data pointer
-                free(t); // Free each raw pointer
+                free(block); // Free the data pointer
             }
 
             item.freeList = nullptr; // Clear the free list
@@ -175,8 +164,8 @@ namespace RustCinder
             return 128; // 128-byte alignment
         else if (idx < 184)
             return 1024; // 1024-byte alignment
-        else if (idx < 208)
-            return 8192; // 8192-byte alignment
+        // else if (idx < 208)
+        //     return 8192; // 8192-byte alignment
         else
             return MAX_SIZE; // Default to max size for larger allocations
     }
@@ -218,5 +207,135 @@ namespace RustCinder
 
         item.usedNums--;
         item.freeNums++; // Increase the number of free blocks
+    }
+
+
+    PageCache::PageCache()
+    {
+        allocateSpan();
+    }
+
+    PageCache::~PageCache()
+    {
+        for(void* ptr : m_rawPtrs)
+        {
+            if (ptr)
+            {
+                free(ptr); // Free the raw pointers stored in m_rawPtrs
+            }
+        }
+    }
+
+    std::size_t limitPages(std::size_t npages)
+    {
+        if(npages <= 0)
+        {
+            npages = 1; // Ensure at least one page is fetched
+        }
+        else if (npages > 128)
+        {
+            npages = 128; // Limit to 128 pages
+        }
+        return npages;
+    }
+
+    void* PageCache::fetchPages(std::size_t npages)
+    {
+        std::lock_guard<std::mutex> lock(m_mutex); // Lock the mutex for thread safety
+        npages = limitPages(npages);
+        Span* span = m_spanList[npages - 1];
+        if (span != nullptr)
+        {
+            Span* next = span->next; // Get the next span in the list
+            m_spanList[npages - 1] = next; // Remove the span from the list
+            if(next != nullptr)
+            {
+                next->prev = nullptr; // Reset the previous pointer of the next span
+            }
+            span->next = nullptr; // Reset the next pointer
+
+            m_spanMap[span] = npages - 1;
+            return span;
+        }
+        else
+        {
+            for(std::size_t i = npages; i < 128; ++i)
+            {
+                if(m_spanList[i] == nullptr)
+                {
+                    continue;
+                }
+                else
+                {
+                    return splitSpan(i, npages);
+                }
+            }
+
+            allocateSpan();
+            return splitSpan(127, npages);
+        }
+        return nullptr;
+    }
+    
+    void PageCache::returnPages(void* ptr)
+    {
+        std::lock_guard<std::mutex> lock(m_mutex); // Lock the mutex for thread safety
+        if(!ptr)
+        {
+            return;
+        }
+        Span* span = reinterpret_cast<Span*>(ptr);
+        std::size_t npages = m_spanMap[span];
+        npages = limitPages(npages); // Ensure npages is within limits
+        m_spanMap.erase(span); // Remove the span from the map
+        span->next = m_spanList[npages]; // Add the span back to the list
+        if (m_spanList[npages] != nullptr)
+        {
+            m_spanList[npages]->prev = span; // Set the previous pointer of the current first span
+        }
+        span->prev = nullptr; // Reset the previous pointer of the span
+        m_spanList[npages] = span; // Add the span to the list for the corresponding number of pages
+    }
+    
+    void PageCache::allocateSpan()
+    {
+        void* ptr = malloc(SPAN_SIZE);
+        if (!ptr)
+        {
+            throw std::bad_alloc();
+        }
+        Span* span = reinterpret_cast<Span*>(ptr);
+        span->prev = nullptr;
+        span->next = nullptr;
+        m_spanList[127] = span;
+
+        m_rawPtrs.push_back(ptr); // Store the raw pointer for deallocation later
+
+        return;
+    }
+
+    PageCache::Span* PageCache::splitSpan(std::size_t index, std::size_t npages)
+    {
+        Span* span = m_spanList[index];
+        m_spanList[index] = span->next; // Remove the span from the list
+        
+        std::size_t remainingPages = index + 1 - npages; // Calculate remaining pages
+        Span* remainSpan = reinterpret_cast<Span*>(reinterpret_cast<char*>(span) + remainingPages * PAGE_SIZE);
+        remainSpan->prev = nullptr; // Reset the previous pointer of the remaining span
+        remainSpan->next = nullptr; // Reset the next pointer of the remaining span
+        if(m_spanList[remainingPages - 1] == nullptr)
+        {
+            m_spanList[remainingPages - 1] = remainSpan; // Add the remaining span to the list
+        }
+        else
+        {
+            Span* lastSpan = m_spanList[remainingPages - 1];
+            remainSpan->next = lastSpan;
+            lastSpan->prev = remainSpan; // Link the new span to the last span
+            m_spanList[remainingPages - 1] = remainSpan; // Update the list with the new span
+        }
+
+        m_spanMap[span] = npages - 1; // Store the span in the map
+        return span;
     }
 }

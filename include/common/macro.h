@@ -4,7 +4,6 @@
 #include <cstddef>
 #include <cstdlib>
 #include <memory>
-#include <iostream>
 
 #include "common/memory_pool.h"
 
@@ -68,6 +67,9 @@ namespace RustCinder
 // 于是就会出现thread local的内存池已经析构了，但是还有内存没回收。
 // 或者说非法访问了已经释放的内存，导致程序崩溃。
 // 所以上面定义了几个宏来使用定制的内存池，仅限于项目内部自己使用，可以避免很多麻烦。
+// 以及内存池内部本身使用了部分std标准库的内容，如果需要完全替代，需要手动实现部分标准库的容器。
+// 综合考虑之后，项目内部自定义结构才使用内存池，第三方库的内容还是使用全局的new/delete。
+// 项目内部也可以使用全局的new/delete，提供多种方案进行使用。
 // void* operator new(std::size_t size)
 // {
 //     // std::cout << "Custom global new called for size: " << size << std::endl;
