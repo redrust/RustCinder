@@ -1,3 +1,6 @@
+#include <algorithm>
+#include <iostream>
+
 #include "common/memory_pool.h"
 
 namespace RustCinder
@@ -243,11 +246,12 @@ namespace RustCinder
     {
         std::lock_guard<std::mutex> lock(m_mutex); // Lock the mutex for thread safety
         npages = limitPages(npages);
-        Span* span = m_spanList[npages - 1];
+        auto& item = m_spanList[npages - 1];
+        Span* span = item.freeList;
         if (span != nullptr)
         {
             Span* next = span->next; // Get the next span in the list
-            m_spanList[npages - 1] = next; // Remove the span from the list
+            item.freeList = next; // Remove the span from the list
             if(next != nullptr)
             {
                 next->prev = nullptr; // Reset the previous pointer of the next span
@@ -255,13 +259,14 @@ namespace RustCinder
             span->next = nullptr; // Reset the next pointer
 
             m_spanMap[span] = npages - 1;
+            item.freePages -= 1; // Decrease the number of free pages
             return span;
         }
         else
         {
             for(std::size_t i = npages; i < 128; ++i)
             {
-                if(m_spanList[i] == nullptr)
+                if(m_spanList[i].freeList == nullptr)
                 {
                     continue;
                 }
@@ -288,13 +293,21 @@ namespace RustCinder
         std::size_t npages = m_spanMap[span];
         npages = limitPages(npages); // Ensure npages is within limits
         m_spanMap.erase(span); // Remove the span from the map
-        span->next = m_spanList[npages]; // Add the span back to the list
-        if (m_spanList[npages] != nullptr)
+
+        auto& item = m_spanList[npages - 1];
+        span->next = item.freeList; // Add the span back to the list
+        if (item.freeList != nullptr)
         {
-            m_spanList[npages]->prev = span; // Set the previous pointer of the current first span
+            item.freeList->prev = span; // Set the previous pointer of the current first span
         }
         span->prev = nullptr; // Reset the previous pointer of the span
-        m_spanList[npages] = span; // Add the span to the list for the corresponding number of pages
+        item.freeList = span; // Add the span to the list for the corresponding number of pages
+        item.freePages += 1; // Increase the number of free pages
+
+        if(item.freePages >= MAX_FREE_PAGES)
+        {
+            mergeSpan(npages); // If the next span is contiguous, merge them
+        }
     }
     
     void PageCache::allocateSpan()
@@ -307,35 +320,119 @@ namespace RustCinder
         Span* span = reinterpret_cast<Span*>(ptr);
         span->prev = nullptr;
         span->next = nullptr;
-        m_spanList[127] = span;
+
+        auto& item = m_spanList[127];
+        item.npages = 128;
+        item.freeList = span;
+        item.freePages = 128; // Initialize the number of free pages
+        item.usedList = nullptr; // Initialize the used list to nullptr
 
         m_rawPtrs.push_back(ptr); // Store the raw pointer for deallocation later
-
         return;
     }
 
     PageCache::Span* PageCache::splitSpan(std::size_t index, std::size_t npages)
     {
-        Span* span = m_spanList[index];
-        m_spanList[index] = span->next; // Remove the span from the list
+        auto& originItem = m_spanList[index];
+        Span* span = originItem.freeList;
+        originItem.freeList = span->next; // Remove the span from the list
+        originItem.freePages -= 1;
         
         std::size_t remainingPages = index + 1 - npages; // Calculate remaining pages
         Span* remainSpan = reinterpret_cast<Span*>(reinterpret_cast<char*>(span) + remainingPages * PAGE_SIZE);
         remainSpan->prev = nullptr; // Reset the previous pointer of the remaining span
         remainSpan->next = nullptr; // Reset the next pointer of the remaining span
-        if(m_spanList[remainingPages - 1] == nullptr)
+        auto& remainItem = m_spanList[remainingPages - 1];
+        if(remainItem.freeList == nullptr)
         {
-            m_spanList[remainingPages - 1] = remainSpan; // Add the remaining span to the list
+            remainItem.freeList = remainSpan; // Add the remaining span to the list
         }
         else
         {
-            Span* lastSpan = m_spanList[remainingPages - 1];
+            Span* lastSpan = remainItem.freeList;
             remainSpan->next = lastSpan;
             lastSpan->prev = remainSpan; // Link the new span to the last span
-            m_spanList[remainingPages - 1] = remainSpan; // Update the list with the new span
+            remainItem.freeList = remainSpan; // Update the list with the new span
         }
+        remainItem.freePages += 1;
 
-        m_spanMap[span] = npages - 1; // Store the span in the map
+        m_spanMap[span] = npages; // Store the span in the map
         return span;
+    }
+
+    void PageCache::mergeSpan(std::size_t index)
+    {
+        auto& item = m_spanList[index - 1];
+        Span* current = item.freeList;
+        std::vector<Span*> spansToMerge;
+        spansToMerge.reserve(item.freePages); // Reserve space for spans to merge
+        while(current != nullptr)
+        {
+            spansToMerge.push_back(current); // Collect all spans in the free list
+            current = current->next; // Iterate through the free list
+        }
+        if(spansToMerge.empty())
+        {
+            return;
+        }
+        std::sort(spansToMerge.begin(), spansToMerge.end(), 
+            [](Span* a, Span* b) { return reinterpret_cast<char*>(a) < reinterpret_cast<char*>(b); });
+        std::vector<Span*> unmergedSpans;
+        unmergedSpans.reserve(spansToMerge.size()); // Reserve space for unmerged spans
+        for(std::size_t i = 0; i < spansToMerge.size() - 1;)
+        {
+            Span* currentSpan = spansToMerge[i];
+            std::size_t jumpCount = 1;
+            while (i + jumpCount <= spansToMerge.size() - 1 &&
+                   reinterpret_cast<char*>(currentSpan) + PAGE_SIZE == reinterpret_cast<char*>(spansToMerge[i + jumpCount]))
+            {
+                jumpCount++;
+            }
+            if(jumpCount > 1)
+            {
+                Span* tailSpan = reinterpret_cast<Span*>(reinterpret_cast<char*>(currentSpan) + jumpCount * PAGE_SIZE);
+                Span* t = currentSpan;
+                for(std::size_t j = 0; j < jumpCount - 1; ++j)
+                {
+                    t->next = reinterpret_cast<Span*>(reinterpret_cast<char*>(t) + PAGE_SIZE);
+                    t->next->prev = t; // Link the next span
+                    t = t->next; // Move to the next span
+                }
+                t->next = nullptr; // Set the last span's next to nullptr
+                std::size_t newIndex = limitPages(index * jumpCount);
+                auto& nextItem = m_spanList[newIndex];
+                if(nextItem.freeList == nullptr)
+                {
+                    nextItem.freeList = currentSpan; // If the next item is empty, set the current span as the free list
+                    nextItem.freePages = jumpCount; // Set the number of free pages
+                }
+                else
+                {
+                    tailSpan->next = nextItem.freeList; // Link the tail span to the existing free list
+                    nextItem.freeList->prev = tailSpan;
+                    nextItem.freeList = currentSpan; // Update the free list with the new head
+                    nextItem.freePages += jumpCount; // Increase the number of free pages
+                }
+            }
+            else
+            {
+                unmergedSpans.push_back(currentSpan); // If not contiguous, keep the current span
+            }
+            i += jumpCount; // Adjust the index to skip the merged spans
+        }
+        if(unmergedSpans.empty())
+        {
+            return; // No spans to merge
+        }
+        for(std::size_t i = 0; i < unmergedSpans.size() - 1; ++i)
+        {
+            Span* newHead = unmergedSpans[i];
+            Span* nextSpan = unmergedSpans[i + 1];
+            nextSpan->next = nullptr;
+            newHead->next = nextSpan;
+            nextSpan->prev = newHead; // Link the new span to the previous one
+        }
+        item.freeList = unmergedSpans[0]; // Update the free list with the new head
+        item.freePages = unmergedSpans.size(); // Update the number of free pages
     }
 }

@@ -93,11 +93,19 @@ namespace RustCinder
     public:
         constexpr static std::size_t PAGE_SIZE = 4096; // 4KB
         constexpr static std::size_t SPAN_SIZE = 128 * PAGE_SIZE; // 512KB
+        constexpr static std::size_t MAX_FREE_PAGES = 128;
 
         struct Span
         {
             Span* prev;
             Span* next;
+        };
+        struct SpanListItem
+        {
+            std::size_t npages; // Number of pages in the span
+            std::size_t freePages; // Number of pages used in the span
+            Span* freeList; // Pointer to the span
+            Span* usedList;
         };
 
         PageCache();
@@ -114,9 +122,10 @@ namespace RustCinder
     private:
         void allocateSpan();
         Span* splitSpan(std::size_t index, std::size_t npages);
+        void mergeSpan(std::size_t index);
     private:
         std::mutex m_mutex;
-        Span* m_spanList[128];
+        SpanListItem m_spanList[128];
         std::vector<void*> m_rawPtrs; // Store raw pointers to spans for deallocation
         std::unordered_map<Span*, std::size_t> m_spanMap;
     };

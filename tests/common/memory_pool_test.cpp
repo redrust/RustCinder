@@ -1,3 +1,5 @@
+#include <iostream>
+
 #include <gtest/gtest.h>
 
 #include <pthread.h>
@@ -39,6 +41,19 @@ TEST(MemoryPoolTest, PageCacheTest)
     RustCinder::PageCache::getInstance().returnPages(ptr2);
     RustCinder::PageCache::getInstance().returnPages(ptr3);
     RustCinder::PageCache::getInstance().returnPages(ptr4);
+}
+
+TEST(MemoryPoolTest, PageCacheMergeTest)
+{
+    std::vector<void*> spans;
+    for(int i = 0; i < 256; ++i)
+    {
+        spans.push_back(RustCinder::PageCache::getInstance().fetchPages(2));
+    }
+    for(int i = 0; i < 256; ++i)
+    {
+        RustCinder::PageCache::getInstance().returnPages(spans[i]);
+    }
 }
 
 
