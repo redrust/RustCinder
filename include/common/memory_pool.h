@@ -55,9 +55,7 @@ namespace RustCinder
             return instance;
         }
     private:
-        std::size_t index(std::size_t size) const;
         ListItem& getListItem(Block* block);
-        std::size_t getAlignByIndex(std::size_t idx) const;
 
         Block* allocateBlock(ListItem& item);
         void deallocateBlock(Block* block);
@@ -72,8 +70,21 @@ namespace RustCinder
     class CentralCache : public NonCopyable, public NonMoveable
     {
     public:
-        CentralCache() = default;
-        ~CentralCache() = default;
+        constexpr static std::size_t INIT_SPAN_ITEM_NUMS = 10;
+        constexpr static std::size_t SPAN_LIST_SIZE = 208; // Number of different sizes in the central cache
+        struct Span
+        {
+            Span* next; // Pointer to the next span in the list
+        };
+        struct SpanListItem
+        {
+            std::size_t npages; // Number of pages in the span
+            std::size_t spanSize;
+            Span* freeList; // Pointer to the span
+            std::vector<void*> rawPtrs; // Store raw pointers to spans for deallocation
+        };
+        CentralCache();
+        ~CentralCache();
 
         void* allocate(std::size_t size);
         void deallocate(void* ptr);
@@ -84,7 +95,11 @@ namespace RustCinder
             return instance;
         }
     private:
+        void fetchFromPageCache(std::size_t listIndex, std::size_t spanSize, std::size_t spanItemNums);
+    private:
         std::mutex m_mutex;
+        SpanListItem m_spanList[SPAN_LIST_SIZE]; // Span list for different sizes
+        std::unordered_map<Span*, std::size_t> m_spanMap; // Map to track spans and their sizes
     };
 
 

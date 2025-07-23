@@ -1,10 +1,68 @@
 #include <algorithm>
+#include <cmath>
 #include <iostream>
 
 #include "common/memory_pool.h"
 
 namespace RustCinder
 {
+    static std::size_t index(std::size_t size)
+    {
+        if(size <= 128)
+        {
+            return (size - 1) / 8; // 8-byte alignment
+        }
+        else if(size <= 1024)
+        {
+            return 16 + (size - 129) / 16; // 16-byte alignment
+        }
+        else if(size <= 8 * 1024)
+        {
+            return 72 + (size - 1025) / 128; // 128-byte alignment
+        }
+        else if(size <= 64 * 1024)
+        {
+            return 128 + (size - 8 * 1024) / 1024; // 256-byte alignment
+        }
+        else if(size <= 256 * 1024)
+        {
+            return 184 + (size - 64 * 1024) / (8 * 1024); // 1024-byte alignment
+        }
+        else
+        {
+            return -1;
+        }
+    }
+
+    static std::size_t getAlignByIndex(std::size_t idx)
+    {
+        if (idx < 16)
+            return 8; // 8-byte alignment
+        else if (idx < 72)
+            return 16; // 16-byte alignment
+        else if (idx < 128)
+            return 128; // 128-byte alignment
+        else if (idx < 184)
+            return 1024; // 1024-byte alignment
+        // else if (idx < 208)
+        //     return 8192; // 8192-byte alignment
+        else
+            return ThreadCache::MAX_SIZE; // Default to max size for larger allocations
+    }
+
+    static std::size_t limitPages(std::size_t npages)
+    {
+        if(npages <= 0)
+        {
+            npages = 1; // Ensure at least one page is fetched
+        }
+        else if (npages > 128)
+        {
+            npages = 128; // Limit to 128 pages
+        }
+        return npages;
+    }
+
     ThreadCache::ThreadCache()
     {
         std::size_t totalSize = 0;
@@ -75,38 +133,52 @@ namespace RustCinder
 
     void ThreadCache::fetchFromCentralCache(std::size_t blockSize, std::size_t blockNums)
     {
+        if(blockSize == 0 || blockSize > MAX_SIZE)
+        {
+            return; // Invalid size, do not fetch
+        }
+        std::size_t totalSize = (blockSize + HEADER_SIZE) * blockNums;
+        void* ptr = nullptr;
         if(!MOOK_ALLOCATE)
         {
-
+            ptr = CentralCache::getInstance().allocate(totalSize);
         }
         else
         {
-            void* ptr = malloc((blockSize + HEADER_SIZE) * blockNums);
-            std::size_t idx = index(blockSize);
-            for(std::size_t i = 0; i < blockNums; ++i)
-            {
-                Block* block = reinterpret_cast<Block*>(reinterpret_cast<char*>(ptr) + i * (blockSize + HEADER_SIZE));
-                block->header.idx = idx;
-                block->header.next = reinterpret_cast<Block*>(reinterpret_cast<char*>(ptr) + (i + 1) * (blockSize + HEADER_SIZE));
-            }
-            Block* tail = reinterpret_cast<Block*>(reinterpret_cast<char*>(ptr) + (blockNums - 1) * (blockSize + HEADER_SIZE));
-            tail->header.idx = idx;
-            tail->header.next = nullptr; // Set the last block's next to nullptr
-            
-            ListItem& item = m_freeList[idx];
-            item.freeList = reinterpret_cast<Block*>(ptr);
-            item.freeNums += blockNums; // Increase the number of free blocks
-
-            item.rawPtrs.push_back(reinterpret_cast<Block*>(ptr)); // Store the raw pointer for deallocation
+            ptr = malloc(totalSize);
+        }
+        if(ptr == nullptr)
+        {
             return;
         }
+        std::size_t idx = index(blockSize);
+        for(std::size_t i = 0; i < blockNums; ++i)
+        {
+            Block* block = reinterpret_cast<Block*>(reinterpret_cast<char*>(ptr) + i * (blockSize + HEADER_SIZE));
+            block->header.idx = idx;
+            block->header.next = reinterpret_cast<Block*>(reinterpret_cast<char*>(ptr) + (i + 1) * (blockSize + HEADER_SIZE));
+        }
+        Block* tail = reinterpret_cast<Block*>(reinterpret_cast<char*>(ptr) + (blockNums - 1) * (blockSize + HEADER_SIZE));
+        tail->header.idx = idx;
+        tail->header.next = nullptr; // Set the last block's next to nullptr
+        
+        ListItem& item = m_freeList[idx];
+        item.freeList = reinterpret_cast<Block*>(ptr);
+        item.freeNums += blockNums; // Increase the number of free blocks
+
+        item.rawPtrs.push_back(reinterpret_cast<Block*>(ptr)); // Store the raw pointer for deallocation
+        return;
     }
 
     void ThreadCache::returnToCentralCache(ListItem& item)
     {
         if(!MOOK_ALLOCATE)
         {
-
+            for(Block* block : item.rawPtrs)
+            {
+                CentralCache::getInstance().deallocate(reinterpret_cast<void*>(block)); // Return the raw pointers to the central cache
+            }
+            item.rawPtrs.clear(); // Clear the raw pointers after deallocation
         }
         else
         {
@@ -114,63 +186,18 @@ namespace RustCinder
             {
                 free(block); // Free the data pointer
             }
-
-            item.freeList = nullptr; // Clear the free list
-            item.usedList = nullptr; // Clear the used list
-            item.freeNums = 0; // Reset the number of free blocks
-            item.usedNums = 0; // Reset the number of used blocks
+            item.rawPtrs.clear(); // Clear the raw pointers after deallocation
         }
-    }
-
-    std::size_t ThreadCache::index(std::size_t size) const
-    {
-        if(size <= 128)
-        {
-            return (size - 1) / 8; // 8-byte alignment
-        }
-        else if(size <= 1024)
-        {
-            return 16 + (size - 129) / 16; // 16-byte alignment
-        }
-        else if(size <= 8 * 1024)
-        {
-            return 72 + (size - 1025) / 128; // 128-byte alignment
-        }
-        else if(size <= 64 * 1024)
-        {
-            return 128 + (size - 8 * 1024) / 1024; // 256-byte alignment
-        }
-        else if(size <= 256 * 1024)
-        {
-            return 184 + (size - 64 * 1024) / (8 * 1024); // 1024-byte alignment
-        }
-        else
-        {
-            return -1;
-        }
+        item.freeList = nullptr; // Clear the free list
+        item.usedList = nullptr; // Clear the used list
+        item.freeNums = 0; // Reset the number of free blocks
+        item.usedNums = 0; // Reset the number of used blocks
     }
 
     ThreadCache::ListItem& ThreadCache::getListItem(Block* block)
     {
         std::size_t idx = block->header.idx;
         return m_freeList[idx];
-    }
-
-
-    std::size_t ThreadCache::getAlignByIndex(std::size_t idx) const
-    {
-        if (idx < 16)
-            return 8; // 8-byte alignment
-        else if (idx < 72)
-            return 16; // 16-byte alignment
-        else if (idx < 128)
-            return 128; // 128-byte alignment
-        else if (idx < 184)
-            return 1024; // 1024-byte alignment
-        // else if (idx < 208)
-        //     return 8192; // 8192-byte alignment
-        else
-            return MAX_SIZE; // Default to max size for larger allocations
     }
     
     ThreadCache::Block* ThreadCache::allocateBlock(ListItem& item)
@@ -212,6 +239,121 @@ namespace RustCinder
         item.freeNums++; // Increase the number of free blocks
     }
 
+    
+    CentralCache::CentralCache()
+    {
+        std::size_t totalSize = 0;
+        for(std::size_t i = 0; i < SPAN_LIST_SIZE; ++i)
+        {
+            SpanListItem& item = m_spanList[i];
+            item.npages = INIT_SPAN_ITEM_NUMS; // Initialize the number of pages in the span
+            totalSize += getAlignByIndex(i);
+            item.spanSize = totalSize;
+            // fetchFromPageCache(i, totalSize, INIT_SPAN_ITEM_NUMS); // Fetch the initial span from the page cache
+        }
+    }
+
+    CentralCache::~CentralCache()
+    {
+        for(std::size_t i = 0; i < SPAN_LIST_SIZE; ++i)
+        {
+            SpanListItem& item = m_spanList[i];
+            for(void* ptr : item.rawPtrs)
+            {
+                if (ptr)
+                {
+                    PageCache::getInstance().returnPages(ptr); // Return the raw pointers to the page cache
+                }
+            }
+        }
+    }
+
+    void* CentralCache::allocate(std::size_t size)
+    {
+        std::size_t listIndex = index(size);
+        if (listIndex >= SPAN_LIST_SIZE)
+        {
+            return nullptr; // Size exceeds the maximum supported size
+        }
+        std::lock_guard<std::mutex> lock(m_mutex); // Lock the mutex for thread safety
+        SpanListItem& item = m_spanList[listIndex];
+        if(item.freeList == nullptr)
+        {
+            fetchFromPageCache(listIndex, item.spanSize, INIT_SPAN_ITEM_NUMS);
+        }
+        Span* span = item.freeList;
+        item.freeList = span->next; // Remove the span from the free list
+        span->next = nullptr; // Reset the next pointer
+        m_spanMap[span] = listIndex; // Store the span in the map with its size
+        return reinterpret_cast<void*>(span); // Return the span pointer
+    }
+
+    void CentralCache::deallocate(void* ptr)
+    {
+        std::lock_guard<std::mutex> lock(m_mutex); // Lock the mutex for thread safety
+        if(!ptr)
+        {
+            return; // No need to deallocate null pointers
+        }
+        Span* span = reinterpret_cast<Span*>(ptr);
+        if(m_spanMap.find(span) == m_spanMap.end())
+        {
+            std::cerr << "Error: Attempt to deallocate a span that was not allocated by CentralCache." << std::endl;
+            return; // Span was not allocated by this cache
+        }
+
+        std::size_t listIndex = m_spanMap[span];
+        m_spanMap.erase(span); // Remove the span from the map
+
+        SpanListItem& item = m_spanList[listIndex];
+        Span* current = item.freeList;
+        if (current == nullptr)
+        {
+            item.freeList = span; // If the free list is empty, set the first span
+        }
+        else
+        {
+            char* ptrChar = reinterpret_cast<char*>(ptr);
+            Span* prev = nullptr;
+            while(current != nullptr && 
+                  reinterpret_cast<char*>(current) < ptrChar)
+            {
+                current = current->next; // Find the correct position to insert the span
+                prev = current; // Keep track of the previous span
+            }
+            if (current != nullptr)
+            {
+                span->next = current; // Link the new span to the next span
+            }
+            else
+            {
+                span->next = nullptr; // Set the next pointer to nullptr if it's the last span
+            }
+            if(prev != nullptr)
+            {
+                prev->next = span; // Link the previous span to the new span
+            }
+        }
+    }
+
+    
+    void CentralCache::fetchFromPageCache(std::size_t listIndex, std::size_t spanSize, std::size_t spanItemNums)
+    {
+        std::size_t npages = std::ceil(spanSize / static_cast<float>(PageCache::PAGE_SIZE)) * spanItemNums;
+        npages = limitPages(npages); // Ensure npages is within limits
+        void* ptr = PageCache::getInstance().fetchPages(npages);
+        for(std::size_t i = 0; i < spanItemNums - 1; ++i)
+        {
+            Span* span = reinterpret_cast<Span*>(reinterpret_cast<char*>(ptr) + i * spanSize);
+            span->next = span + 1;
+        }
+        Span* lastSpan = reinterpret_cast<Span*>(reinterpret_cast<char*>(ptr) + (spanItemNums - 1) * spanSize);
+        lastSpan->next = nullptr; // Set the last span's next to nullptr
+
+        SpanListItem& item = m_spanList[listIndex];
+        item.freeList = reinterpret_cast<Span*>(ptr); // If the free list is empty, set the first span
+        item.rawPtrs.push_back(ptr); // Store the raw pointer for deallocation
+    }
 
     PageCache::PageCache()
     {
@@ -227,19 +369,6 @@ namespace RustCinder
                 free(ptr); // Free the raw pointers stored in m_rawPtrs
             }
         }
-    }
-
-    std::size_t limitPages(std::size_t npages)
-    {
-        if(npages <= 0)
-        {
-            npages = 1; // Ensure at least one page is fetched
-        }
-        else if (npages > 128)
-        {
-            npages = 128; // Limit to 128 pages
-        }
-        return npages;
     }
 
     void* PageCache::fetchPages(std::size_t npages)
